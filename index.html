@@ -2,13 +2,13 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>上海市灌溉数据填报系统</title>
     
-    <!-- 1. 引入 Tailwind CSS (样式库) -->
+    <!-- 1. 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- 2. 定义依赖包映射 (使用 esm.sh CDN) -->
+    <!-- 2. 定义依赖包映射 -->
     <script type="importmap">
     {
       "imports": {
@@ -19,20 +19,18 @@
     }
     </script>
 
-    <!-- 3. 引入 Babel (用于在浏览器中解析 JSX) -->
+    <!-- 3. 引入 Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
     <!-- 4. 引入 LeanCloud SDK -->
     <script src="https://cdn.jsdelivr.net/npm/leancloud-storage@4.15.0/dist/av-min.js"></script>
 
     <style>
-        /* 自定义滚动条样式 */
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #c7c7c7; border-radius: 3px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
         
-        /* 加载动画 */
         .loading-spinner {
             border: 4px solid #f3f3f3;
             border-top: 4px solid #3498db;
@@ -43,59 +41,48 @@
             margin: 20px auto;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+        .toast-enter { animation: slideIn 0.3s ease-out forwards; }
+        .toast-exit { animation: fadeOut 0.3s ease-out forwards; }
+        
+        /* 移动端优化：防止 iOS 点击高亮 */
+        * { -webkit-tap-highlight-color: transparent; }
     </style>
 </head>
 <body class="bg-slate-100">
     <div id="root">
-        <!-- 初始化加载界面，防止白屏 -->
         <div style="height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #64748b;">
             <div class="loading-spinner"></div>
             <h2 style="font-size: 1.2rem; font-weight: bold;">系统正在加载中...</h2>
-            <p style="font-size: 0.9rem; margin-top: 10px;">如果是本地直接打开 (file://)，请注意可能会因为 CORS 策略无法运行。</p>
-            <p style="font-size: 0.9rem;">请上传至 GitHub Pages 或在本地服务器运行。</p>
         </div>
     </div>
 
-    <!-- 错误捕获脚本 -->
-    <script>
-        window.addEventListener('error', function(e) {
-            if (e.message.includes('Access-Control-Allow-Origin') || e.message.includes('module')) {
-                const root = document.getElementById('root');
-                root.innerHTML = `
-                    <div style="padding: 20px; text-align: center; color: #ef4444; margin-top: 50px;">
-                        <h1 style="font-size: 24px; font-weight: bold;">无法在本地直接运行</h1>
-                        <p style="margin-top: 10px;">检测到跨域(CORS)错误。这是因为你可能双击了 HTML 文件直接打开。</p>
-                        <div style="background: #fff; padding: 20px; border-radius: 10px; margin-top: 20px; display: inline-block; text-align: left; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                            <p><strong>解决方法：</strong></p>
-                            <ol style="list-style: decimal; margin-left: 20px; margin-top: 10px;">
-                                <li>将此文件上传到 <strong>GitHub Pages</strong> (你的 zhangsxphd.github.io)。</li>
-                                <li>或者在本地安装 VS Code 插件 "Live Server" 并通过它打开。</li>
-                            </ol>
-                        </div>
-                    </div>
-                `;
-            }
-        });
-    </script>
-
     <!-- 5. 应用程序逻辑 -->
     <script type="text/babel" data-type="module">
-        import React, { useState, useMemo, useEffect } from 'react';
+        import React, { useState, useMemo, useEffect, useCallback } from 'react';
         import { createRoot } from 'react-dom/client';
         import { 
           ClipboardEdit, Save, Calendar, Droplets, Layers, Calculator, X, History,
           MapPin, Ruler, AlertCircle, AlertTriangle, Pencil, MousePointerClick,
           ChevronDown, ChevronUp, CornerDownRight, Check, Trash2, Plus, Hash,
           Loader2, Cloud, CheckSquare, Square, Wifi, WifiOff, BrainCircuit,
-          Sparkles, LayoutDashboard, Sprout, Bot, BarChart3
+          Sparkles, LayoutDashboard, Sprout, Bot, BarChart3, Info, Edit3, Eye
         } from 'lucide-react';
 
-        // LeanCloud 配置信息
+        // LeanCloud 配置
         const LEANCLOUD_APP_ID = "gUdUKvrJuhv7duj8gpe5FM3w-MdYXbMMI";
         const LEANCLOUD_APP_KEY = "0XDb3n3bypxVr46iXKTRWcUV";
         const LEANCLOUD_SERVER_URL = "https://gudukvrj.api.lncldglobal.com";
         
-        const apiKey = "AIzaSyDPMygV8o9-UjyRlU2FshtC4TsfZir1KmA"; 
+        const apiKey = ""; 
 
         const STATIC_ZONES_DEF = [
           { id: 1, name: "崇明区", location: "崇明区" },
@@ -141,6 +128,27 @@
           { zoneId: 7, name: "吴泾镇样点灌区" }, { zoneId: 7, name: "马桥镇样点灌区" }, { zoneId: 7, name: "浦江镇样点灌区" }
         ];
 
+        const ToastContainer = ({ notifications, removeNotification }) => {
+            return (
+                <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none w-full px-4 md:w-auto md:px-0">
+                    {notifications.map(note => (
+                        <div 
+                            key={note.id} 
+                            className={`toast-enter pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border backdrop-blur-md w-full md:min-w-[300px] md:max-w-md
+                                ${note.type === 'error' ? 'bg-red-50/95 border-red-200 text-red-800' : 'bg-white/95 border-slate-200 text-slate-800'}
+                            `}
+                        >
+                            {note.type === 'error' ? <AlertCircle size={20} className="text-red-500 flex-shrink-0" /> : <Info size={20} className="text-blue-500 flex-shrink-0" />}
+                            <p className="text-sm font-medium flex-grow break-all">{note.message}</p>
+                            <button onClick={() => removeNotification(note.id)} className="text-slate-400 hover:text-slate-600 flex-shrink-0">
+                                <X size={16} />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            );
+        };
+
         function App() {
           const [zones, setZones] = useState(STATIC_ZONES_DEF.map(z => ({ ...z, points: [] }))); 
           const [records, setRecords] = useState([]);
@@ -170,6 +178,18 @@
           const [isGeminiAnalyzing, setIsGeminiAnalyzing] = useState(false);
           const [geminiGlobalResult, setGeminiGlobalResult] = useState(null);
           const [geminiGlobalModalOpen, setGeminiGlobalModalOpen] = useState(false);
+          
+          const [notifications, setNotifications] = useState([]);
+          const addNotification = useCallback((message, type = 'info') => {
+              const id = Date.now();
+              setNotifications(prev => [...prev, { id, message, type }]);
+              setTimeout(() => {
+                  setNotifications(prev => prev.filter(n => n.id !== id));
+              }, 3000);
+          }, []);
+          const removeNotification = (id) => {
+              setNotifications(prev => prev.filter(n => n.id !== id));
+          };
 
           const [formData, setFormData] = useState({
             date: new Date().toISOString().split('T')[0],
@@ -361,8 +381,9 @@
                 return z;
               }));
               setEditingPointId(null);
+              addNotification("灌区名称修改成功", "success");
             } catch (error) {
-              alert("保存失败: " + error.message);
+              addNotification("保存失败: " + error.message, "error");
             }
           };
 
@@ -422,8 +443,9 @@
               setDeleteModalOpen(false);
               setItemToDelete(null);
               setDeleteType(null);
+              addNotification("删除成功", "success");
             } catch (error) {
-              alert("删除操作失败: " + error.message);
+              addNotification("删除操作失败: " + error.message, "error");
             }
           };
 
@@ -454,8 +476,9 @@
               }));
               setEditingPointId(savedPoint.id);
               setEditNameValue(newName);
+              addNotification("新增灌区成功", "success");
             } catch (error) {
-              alert("新增失败: " + error.message);
+              addNotification("新增失败: " + error.message, "error");
             }
           };
 
@@ -544,7 +567,7 @@
 
           const handleAIAnalysis = () => {
             if (sortedRecords.length === 0) {
-              alert("当前区域暂无数据，无法进行分析");
+              addNotification("当前区域暂无数据，无法进行分析", "error");
               return;
             }
             const totalVol = sortedRecords.reduce((sum, r) => sum + r.volume, 0);
@@ -659,8 +682,9 @@
               setFilterZoneId(selectedZone.id); 
               setIsModalOpen(false);
               setEditingRecordId(null);
+              addNotification("数据保存成功", "success");
             } catch (error) {
-              alert("数据保存失败: " + error.message);
+              addNotification("数据保存失败: " + error.message, "error");
             }
           };
 
@@ -676,24 +700,28 @@
 
           return (
             <div className="min-h-screen bg-slate-100/50 font-sans text-slate-900 flex flex-col">
+              <ToastContainer notifications={notifications} removeNotification={removeNotification} />
               
-              {/* Header (已应用 z-40 修复遮挡问题) */}
+              {/* Header */}
               <header className="bg-gradient-to-r from-blue-800 via-blue-700 to-cyan-600 text-white shadow-xl sticky top-0 z-40 border-b border-white/10">
-                <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="bg-white/10 p-2 rounded-xl backdrop-blur-sm shadow-inner">
-                       <Sprout size={28} className="text-green-300" />
+                <div className="container mx-auto px-4 md:px-6 py-3 md:py-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3 md:gap-4">
+                    <div className="bg-white/10 p-2 rounded-xl backdrop-blur-sm shadow-inner flex-shrink-0">
+                       <Sprout size={24} className="text-green-300 md:w-7 md:h-7" />
                     </div>
-                    <div>
-                      <h1 className="text-2xl font-bold tracking-wide text-white drop-shadow-sm">上海市灌溉数据填报系统</h1>
-                      <p className="text-xs text-blue-100 opacity-80 flex items-center gap-1 font-medium">
+                    <div className="overflow-hidden">
+                      <h1 className="text-lg md:text-2xl font-bold tracking-wide text-white drop-shadow-sm truncate">
+                        上海市灌溉数据填报系统
+                      </h1>
+                      <p className="text-[10px] md:text-xs text-blue-100 opacity-80 flex items-center gap-1 font-medium truncate">
                         Shanghai Irrigation Data Reporting System
                       </p>
                     </div>
                   </div>
                   
-                  <div className="hidden md:flex items-center gap-8">
-                    <div className="flex flex-col items-end">
+                  {/* 移动端只显示状态点 */}
+                  <div className="flex items-center gap-4">
+                    <div className="hidden md:flex flex-col items-end">
                        <div className="text-3xl font-mono font-bold leading-none tracking-wider text-white drop-shadow-md">
                          {currentTime.toLocaleTimeString('zh-CN', { hour12: false })}
                        </div>
@@ -701,19 +729,19 @@
                          {currentTime.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'long' })}
                        </div>
                     </div>
-                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full backdrop-blur-md border shadow-inner ${isOnline ? 'bg-green-500/20 border-green-400/30' : 'bg-red-500/20 border-red-400/30'}`}>
+                    <div className={`flex items-center gap-2 px-2 py-1 md:px-3 md:py-1.5 rounded-full backdrop-blur-md border shadow-inner ${isOnline ? 'bg-green-500/20 border-green-400/30' : 'bg-red-500/20 border-red-400/30'}`}>
                       {isOnline ? (
                         <>
-                          <span className="relative flex h-2.5 w-2.5">
+                          <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                             <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.8)]"></span>
                           </span>
-                          <span className="text-xs font-bold text-green-50">在线</span>
+                          <span className="text-xs font-bold text-green-50 hidden md:inline">在线</span>
                         </>
                       ) : (
                          <>
-                          <span className="inline-flex rounded-full h-2.5 w-2.5 bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>
-                          <span className="text-xs font-bold text-red-100">离线</span>
+                          <span className="inline-flex rounded-full h-2.5 w-2.5 bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] flex-shrink-0"></span>
+                          <span className="text-xs font-bold text-red-100 hidden md:inline">离线</span>
                         </>
                       )}
                     </div>
@@ -721,31 +749,31 @@
                 </div>
               </header>
 
-              <main className="flex-grow container mx-auto px-6 py-8 space-y-8">
+              <main className="flex-grow container mx-auto px-4 md:px-6 py-4 md:py-8 space-y-6 md:space-y-8">
                 
                 {/* 区域选择部分 */}
                 <section>
-                  <div className="flex justify-between items-end mb-5">
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-200">
-                        <MapPin className="text-blue-600" size={20} />
-                        <h2 className="text-lg font-bold text-slate-800">区域选择与填报</h2>
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-4 md:mb-5 gap-3">
+                    <div className="flex items-center gap-3 w-full md:w-auto">
+                      <div className="flex items-center gap-2 bg-white px-3 py-2 md:px-4 rounded-xl shadow-sm border border-slate-200 flex-grow md:flex-grow-0">
+                        <MapPin className="text-blue-600" size={18} />
+                        <h2 className="text-base md:text-lg font-bold text-slate-800">区域选择与填报</h2>
                       </div>
-                      <span className="text-xs font-bold bg-gradient-to-r from-blue-600 to-cyan-500 text-white px-3 py-1.5 rounded-full shadow-md shadow-blue-200">
-                        共 {totalPointsCount} 个样点灌区
+                      <span className="text-xs font-bold bg-gradient-to-r from-blue-600 to-cyan-500 text-white px-3 py-1.5 rounded-full shadow-md shadow-blue-200 flex-shrink-0">
+                        {totalPointsCount} 灌区
                       </span>
                     </div>
                     
                     <button 
                       onClick={handleGeminiGlobalAnalysis}
-                      className="group flex items-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white px-4 py-2.5 rounded-xl shadow-lg hover:shadow-indigo-200 transition-all transform hover:-translate-y-0.5"
+                      className="w-full md:w-auto group flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white px-4 py-2.5 rounded-xl shadow-lg hover:shadow-indigo-200 transition-all transform hover:-translate-y-0.5"
                     >
                       <Bot size={18} className="text-purple-200 group-hover:animate-bounce" />
-                      <span className="font-bold text-sm">综合分析</span>
+                      <span className="font-bold text-sm">AI 综合分析</span>
                     </button>
                   </div>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6 items-start">
+                  <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6 items-start">
                     {zones.map(zone => {
                       const isExpanded = expandedZoneId === zone.id;
                       const isSelected = filterZoneId === zone.id;
@@ -761,7 +789,7 @@
                         >
                           <div 
                             onClick={() => handleZoneClick(zone)}
-                            className="p-6 cursor-pointer relative z-10 bg-white"
+                            className="p-4 md:p-6 cursor-pointer relative z-10 bg-white"
                           >
                             {isSelected && (
                               <div className="absolute top-0 right-0 bg-blue-500 text-white px-3 py-1 text-[10px] font-bold rounded-bl-xl shadow-sm">
@@ -807,37 +835,37 @@
                                           onChange={(e) => setEditNameValue(e.target.value)}
                                           onClick={handleEditInputClick}
                                           autoFocus
-                                          className="flex-grow bg-transparent outline-none text-slate-800 font-bold border-b-2 border-blue-400 px-1"
+                                          className="flex-grow bg-transparent outline-none text-slate-800 font-bold border-b-2 border-blue-400 px-1 w-full"
                                         />
                                         <button 
                                           onClick={(e) => saveEditPoint(e, zone.id, point.id)}
-                                          className="p-1.5 bg-green-100 text-green-600 rounded-lg hover:bg-green-200"
+                                          className="p-1.5 bg-green-100 text-green-600 rounded-lg hover:bg-green-200 flex-shrink-0"
                                         >
                                           <Check size={14} />
                                         </button>
                                         <button 
                                           onClick={cancelEditPoint}
-                                          className="p-1.5 bg-red-100 text-red-600 rounded-lg hover:bg-red-200"
+                                          className="p-1.5 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 flex-shrink-0"
                                         >
                                           <X size={14} />
                                         </button>
                                       </div>
                                     ) : (
                                       <>
-                                        <div className="w-1.5 h-1.5 rounded-full bg-slate-300 group-hover/item:bg-blue-400 transition-colors"></div>
+                                        <div className="w-1.5 h-1.5 rounded-full bg-slate-300 group-hover/item:bg-blue-400 transition-colors flex-shrink-0"></div>
                                         <span className="flex-grow truncate">{point.name}</span>
-                                        <div className="flex items-center opacity-0 group-hover/item:opacity-100 transition-all transform translate-x-2 group-hover/item:translate-x-0">
+                                        <div className="flex items-center opacity-100 md:opacity-0 group-hover/item:opacity-100 transition-all md:transform md:translate-x-2 md:group-hover/item:translate-x-0">
                                           <button 
                                             onClick={(e) => startEditPoint(e, point)}
                                             className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-100 rounded-lg mr-1"
                                           >
-                                            <Pencil size={12} />
+                                            <Pencil size={14} />
                                           </button>
                                           <button 
                                             onClick={(e) => handleDeletePoint(e, zone.id, point.id)}
                                             className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-100 rounded-lg"
                                           >
-                                            <Trash2 size={12} />
+                                            <Trash2 size={14} />
                                           </button>
                                         </div>
                                       </>
@@ -862,27 +890,27 @@
                   </div>
                 </section>
                 
-                {/* 历史数据表格部分 (已修复滚动透视和层级问题) */}
-                <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden h-[650px] flex flex-col relative z-0">
-                  <div className="px-6 py-4 border-b-2 border-indigo-100 bg-slate-50 flex justify-between items-center h-16 relative z-20 flex-shrink-0">
-                    <div className="flex items-center gap-3">
+                {/* 历史数据展示区域：PC端显示表格，移动端显示卡片列表 */}
+                <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden md:h-[650px] flex flex-col relative z-0">
+                  <div className="px-4 md:px-6 py-4 border-b-2 border-indigo-100 bg-slate-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:h-16 relative z-20 flex-shrink-0">
+                    <div className="flex items-center gap-3 w-full md:w-auto">
                       <div className="bg-white p-1.5 rounded-lg shadow-sm border border-slate-200 text-blue-600">
                         <History size={18} />
                       </div>
-                      <h2 className="font-bold text-slate-700 flex items-center gap-2">
+                      <h2 className="font-bold text-slate-700 flex items-center gap-2 text-sm md:text-base flex-grow md:flex-grow-0">
                         {currentFilterZoneName ? (
                           <>
-                            <span className="text-slate-400">当前区域:</span> 
+                            <span className="text-slate-400 hidden md:inline">当前区域:</span> 
                             <div className="relative group">
-                              <span className="text-blue-700 bg-blue-50 px-3 py-1 rounded border border-blue-100 font-bold">{currentFilterZoneName}</span>
-                              <div className="absolute -bottom-2 left-0 w-full h-0.5 bg-blue-400 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                              <span className="text-blue-700 bg-blue-50 px-2 md:px-3 py-0.5 md:py-1 rounded border border-blue-100 font-bold truncate max-w-[120px] md:max-w-none block">{currentFilterZoneName}</span>
+                              <div className="absolute -bottom-2 left-0 w-full h-0.5 bg-blue-400 opacity-0 group-hover:opacity-100 transition-opacity hidden md:block"></div>
                             </div>
                           </>
                         ) : '填报记录 (请先选择区域)'}
                       </h2>
                     </div>
                     
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-between w-full md:w-auto gap-3">
                        <button 
                          onClick={handleAIAnalysis}
                          className="group bg-white hover:bg-slate-50 text-slate-600 hover:text-blue-600 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 flex items-center gap-1.5 transition-all"
@@ -891,145 +919,222 @@
                          本区分析
                        </button>
 
-                       {selectedRecordIds.length > 0 && (
-                         <button 
-                           onClick={handleBatchDelete}
-                           className="animate-in fade-in slide-in-from-right-5 bg-red-50 text-red-600 px-4 py-2 rounded-xl text-xs font-bold border border-red-200 hover:bg-red-100 hover:border-red-300 flex items-center gap-2 transition-all shadow-sm"
-                         >
-                           <Trash2 size={14} /> 批量删除 ({selectedRecordIds.length})
-                         </button>
-                       )}
+                       <div className="flex items-center gap-2">
+                           {selectedRecordIds.length > 0 && (
+                             <button 
+                               onClick={handleBatchDelete}
+                               className="animate-in fade-in slide-in-from-right-5 bg-red-50 text-red-600 px-3 py-1.5 rounded-xl text-xs font-bold border border-red-200 hover:bg-red-100 hover:border-red-300 flex items-center gap-1 transition-all shadow-sm"
+                             >
+                               <Trash2 size={14} /> 删 ({selectedRecordIds.length})
+                             </button>
+                           )}
 
-                       <span className="text-xs font-medium text-slate-500 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">
-                         共 {sortedRecords.length} 条记录
-                       </span>
+                           <span className="text-xs font-medium text-slate-500 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm whitespace-nowrap">
+                             共 {sortedRecords.length} 条
+                           </span>
+                       </div>
                     </div>
-                    
-                    <div className="absolute bottom-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-indigo-200 to-transparent"></div>
                   </div>
                   
-                  <div className="overflow-auto flex-grow">
-                    <table className="w-full text-sm text-left border-collapse">
-                      <thead className="text-xs text-slate-500 font-semibold uppercase bg-white border-b border-slate-100 sticky top-0 z-10 shadow-sm">
-                        <tr>
-                          <th className="px-4 py-4 w-12 text-center">
-                            {sortedRecords.length > 0 && (
-                              <button onClick={handleSelectAll} className="text-slate-400 hover:text-blue-600 transition-colors">
-                                {selectedRecordIds.length === sortedRecords.length && sortedRecords.length > 0 ? 
-                                  <CheckSquare size={18} className="text-blue-600 drop-shadow-sm"/> : 
-                                  <Square size={18} />
-                                }
-                              </button>
-                            )}
-                          </th>
-                          <th className="px-4 py-4">填报日期</th>
-                          <th className="px-4 py-4">行政区</th>
-                          <th className="px-4 py-4 text-blue-700">样点灌区名称</th>
-                          <th className="px-4 py-4 text-center">典型田块</th>
-                          <th className="px-4 py-4 text-right">灌水前水深</th>
-                          <th className="px-4 py-4 text-right">灌水后水深</th>
-                          <th className="px-4 py-4 text-right">灌前含水率</th>
-                          <th className="px-4 py-4 text-right">灌后含水率</th>
-                          <th className="px-4 py-4 text-right">湿润层深度</th>
-                          <th className="px-4 py-4 text-right text-blue-700 bg-blue-50/30">本次灌水量</th>
-                          <th className="px-4 py-4 text-center w-20">操作</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 bg-white">
-                        {sortedRecords.length > 0 ? (
-                          sortedRecords.map((record, index) => {
-                            const zoneName = zones.find(z => z.id === record.zoneId)?.name;
-                            const isSelected = selectedRecordIds.includes(record.id);
-                            
-                            return (
-                              <tr 
-                                key={record.id} 
-                                onDoubleClick={() => handleEditRecord(record)}
-                                className={`
-                                  transition-all duration-200 cursor-pointer select-none group
-                                  ${isSelected ? 'bg-blue-50/80' : index % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}
-                                  hover:bg-blue-50 hover:shadow-sm relative
-                                `}
-                              >
-                                <td className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
-                                  <button onClick={() => handleSelectRecord(record.id)} className="text-slate-400 hover:text-blue-600 transition-colors">
-                                    {isSelected ? <CheckSquare size={18} className="text-blue-600"/> : <Square size={18} />}
+                  <div className="overflow-auto flex-grow bg-slate-50/50 relative">
+                    
+                    {/* 1. 桌面端表格视图 (md:block) */}
+                    <div className="hidden md:block w-full h-full">
+                        <table className="w-full text-sm text-left border-collapse">
+                          <thead className="text-xs text-slate-500 font-semibold uppercase bg-white border-b border-slate-100 sticky top-0 z-10 shadow-sm">
+                            <tr>
+                              <th className="px-4 py-4 w-12 text-center">
+                                {sortedRecords.length > 0 && (
+                                  <button onClick={handleSelectAll} className="text-slate-400 hover:text-blue-600 transition-colors">
+                                    {selectedRecordIds.length === sortedRecords.length && sortedRecords.length > 0 ? 
+                                      <CheckSquare size={18} className="text-blue-600 drop-shadow-sm"/> : 
+                                      <Square size={18} />
+                                    }
                                   </button>
-                                </td>
-                                <td className="px-4 py-4 font-mono text-slate-600 text-xs font-medium tracking-wide">
-                                  {record.date}
-                                </td>
-                                <td className="px-4 py-4 font-medium text-slate-600">{zoneName}</td>
-                                <td className="px-4 py-4 font-bold text-slate-700 group-hover:text-blue-700 transition-colors">{record.pointName || '---'}</td>
-                                <td className="px-4 py-4 text-center font-mono font-bold text-slate-500 bg-slate-100/50 rounded m-1 inline-block w-8">{record.fieldNumber}</td>
-                                <td className="px-4 py-4 text-right text-slate-500 font-mono">{record.waterDepthBefore} <span className="text-[10px] text-slate-300">mm</span></td>
-                                <td className="px-4 py-4 text-right text-slate-500 font-mono">{record.waterDepthAfter} <span className="text-[10px] text-slate-300">mm</span></td>
-                                <td className="px-4 py-4 text-right text-slate-600 font-mono">{record.moistureBefore}<span className="text-[10px] text-slate-300">%</span></td>
-                                <td className="px-4 py-4 text-right text-slate-600 font-mono">{record.moistureAfter}<span className="text-[10px] text-slate-300">%</span></td>
-                                <td className="px-4 py-4 text-right text-slate-600 font-mono">{record.depth} <span className="text-[10px] text-slate-300">cm</span></td>
-                                <td className="px-4 py-4 text-right font-bold text-blue-600 bg-blue-50/30 font-mono border-l border-slate-100 group-hover:border-white">
-                                  {record.volume.toFixed(2)} <span className="text-[10px] font-normal text-slate-400">方/亩</span>
-                                </td>
-                                <td className="px-4 py-4 text-center">
-                                  <button 
-                                    onClick={(e) => handleDeleteRecord(e, record.id)}
-                                    className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                                    title="删除此条记录"
+                                )}
+                              </th>
+                              <th className="px-4 py-4">填报日期</th>
+                              <th className="px-4 py-4">行政区</th>
+                              <th className="px-4 py-4 text-blue-700">样点灌区名称</th>
+                              <th className="px-4 py-4 text-center">典型田块</th>
+                              <th className="px-4 py-4 text-right">灌水前水深</th>
+                              <th className="px-4 py-4 text-right">灌水后水深</th>
+                              <th className="px-4 py-4 text-right">灌前含水率</th>
+                              <th className="px-4 py-4 text-right">灌后含水率</th>
+                              <th className="px-4 py-4 text-right">湿润层深度</th>
+                              <th className="px-4 py-4 text-right text-blue-700 bg-blue-50/30">本次灌水量</th>
+                              <th className="px-4 py-4 text-center w-20">操作</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 bg-white">
+                            {sortedRecords.length > 0 ? (
+                              sortedRecords.map((record, index) => {
+                                const zoneName = zones.find(z => z.id === record.zoneId)?.name;
+                                const isSelected = selectedRecordIds.includes(record.id);
+                                
+                                return (
+                                  <tr 
+                                    key={record.id} 
+                                    onDoubleClick={() => handleEditRecord(record)}
+                                    className={`
+                                      transition-all duration-200 cursor-pointer select-none group
+                                      ${isSelected ? 'bg-blue-50/80' : index % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}
+                                      hover:bg-blue-50 hover:shadow-sm relative
+                                    `}
                                   >
-                                    <Trash2 size={16} />
-                                  </button>
+                                    <td className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                                      <button onClick={() => handleSelectRecord(record.id)} className="text-slate-400 hover:text-blue-600 transition-colors">
+                                        {isSelected ? <CheckSquare size={18} className="text-blue-600"/> : <Square size={18} />}
+                                      </button>
+                                    </td>
+                                    <td className="px-4 py-4 font-mono text-slate-600 text-xs font-medium tracking-wide">
+                                      {record.date}
+                                    </td>
+                                    <td className="px-4 py-4 font-medium text-slate-600">{zoneName}</td>
+                                    <td className="px-4 py-4 font-bold text-slate-700 group-hover:text-blue-700 transition-colors">{record.pointName || '---'}</td>
+                                    <td className="px-4 py-4 text-center font-mono font-bold text-slate-500 bg-slate-100/50 rounded m-1 inline-block w-8">{record.fieldNumber}</td>
+                                    <td className="px-4 py-4 text-right text-slate-500 font-mono">{record.waterDepthBefore} <span className="text-[10px] text-slate-300">mm</span></td>
+                                    <td className="px-4 py-4 text-right text-slate-500 font-mono">{record.waterDepthAfter} <span className="text-[10px] text-slate-300">mm</span></td>
+                                    <td className="px-4 py-4 text-right text-slate-600 font-mono">{record.moistureBefore}<span className="text-[10px] text-slate-300">%</span></td>
+                                    <td className="px-4 py-4 text-right text-slate-600 font-mono">{record.moistureAfter}<span className="text-[10px] text-slate-300">%</span></td>
+                                    <td className="px-4 py-4 text-right text-slate-600 font-mono">{record.depth} <span className="text-[10px] text-slate-300">cm</span></td>
+                                    <td className="px-4 py-4 text-right font-bold text-blue-600 bg-blue-50/30 font-mono border-l border-slate-100 group-hover:border-white">
+                                      {record.volume.toFixed(2)} <span className="text-[10px] font-normal text-slate-400">方/亩</span>
+                                    </td>
+                                    <td className="px-4 py-4 text-center">
+                                      <button 
+                                        onClick={(e) => handleDeleteRecord(e, record.id)}
+                                        className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                        title="删除此条记录"
+                                      >
+                                        <Trash2 size={16} />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            ) : (
+                              <tr>
+                                <td colSpan="12" className="px-6 py-24 text-center">
+                                    <div className="flex flex-col items-center gap-4 text-slate-400">
+                                        {filterZoneId ? (
+                                            <>
+                                              <ClipboardEdit size={48} className="text-slate-300" />
+                                              <p>该区域暂无数据</p>
+                                            </>
+                                        ) : (
+                                            <>
+                                              <LayoutDashboard size={48} className="text-blue-300" />
+                                              <p>请选择一个行政区查看数据</p>
+                                            </>
+                                        )}
+                                    </div>
                                 </td>
                               </tr>
+                            )}
+                          </tbody>
+                        </table>
+                    </div>
+
+                    {/* 2. 移动端卡片视图 (md:hidden) */}
+                    <div className="md:hidden p-4 space-y-4 pb-20">
+                        {sortedRecords.length > 0 ? (
+                          sortedRecords.map((record) => {
+                            const zoneName = zones.find(z => z.id === record.zoneId)?.name;
+                            const isSelected = selectedRecordIds.includes(record.id);
+
+                            return (
+                              <div 
+                                key={record.id}
+                                onClick={() => handleEditRecord(record)}
+                                className={`bg-white p-4 rounded-2xl shadow-sm border border-slate-100 active:scale-[0.98] transition-transform relative overflow-hidden ${isSelected ? 'ring-2 ring-blue-400 bg-blue-50/30' : ''}`}
+                              >
+                                {/* 顶部信息 */}
+                                <div className="flex justify-between items-start mb-3">
+                                    <div className="flex gap-3 items-start">
+                                        <div onClick={(e) => {e.stopPropagation(); handleSelectRecord(record.id)}} className="mt-0.5 text-slate-300">
+                                            {isSelected ? <CheckSquare size={20} className="text-blue-500" /> : <Square size={20} />}
+                                        </div>
+                                        <div>
+                                            <div className="font-bold text-slate-800 text-base mb-0.5">{record.pointName}</div>
+                                            <div className="flex items-center gap-2 text-xs text-slate-400">
+                                                <span className="bg-slate-100 px-1.5 py-0.5 rounded">{zoneName}</span>
+                                                <span>{record.date}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="text-lg font-bold text-blue-600 font-mono">{record.volume.toFixed(2)}</div>
+                                        <div className="text-[10px] text-slate-400 font-medium">方/亩</div>
+                                    </div>
+                                </div>
+
+                                {/* 数据概览 */}
+                                <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-xl text-xs text-slate-600 mb-3">
+                                    <div className="space-y-1">
+                                        <div className="flex justify-between"><span className="text-slate-400">田块:</span> <span className="font-bold">{record.fieldNumber}号</span></div>
+                                        <div className="flex justify-between"><span className="text-slate-400">湿润层:</span> <span className="font-mono">{record.depth}cm</span></div>
+                                    </div>
+                                    <div className="space-y-1 border-l border-slate-200 pl-2">
+                                        <div className="flex justify-between"><span className="text-slate-400">水深:</span> <span className="font-mono">{record.waterDepthBefore}→{record.waterDepthAfter}</span></div>
+                                        <div className="flex justify-between"><span className="text-slate-400">含水:</span> <span className="font-mono">{record.moistureBefore}→{record.moistureAfter}%</span></div>
+                                    </div>
+                                </div>
+
+                                {/* 操作按钮 */}
+                                <div className="flex justify-end gap-3 border-t border-slate-50 pt-2">
+                                    <button 
+                                        onClick={(e) => {e.stopPropagation(); handleEditRecord(record)}}
+                                        className="text-xs font-bold text-blue-600 flex items-center gap-1 px-2 py-1 bg-blue-50 rounded-lg"
+                                    >
+                                        <Edit3 size={12} /> 修改
+                                    </button>
+                                    <button 
+                                        onClick={(e) => {handleDeleteRecord(e, record.id)}}
+                                        className="text-xs font-bold text-red-600 flex items-center gap-1 px-2 py-1 bg-red-50 rounded-lg"
+                                    >
+                                        <Trash2 size={12} /> 删除
+                                    </button>
+                                </div>
+                              </div>
                             );
                           })
                         ) : (
-                          <tr>
-                            <td colSpan="12" className="px-6 py-24 text-center">
-                              {filterZoneId ? (
-                                <div className="flex flex-col items-center gap-4 text-slate-400 animate-in fade-in slide-in-from-bottom-4">
-                                  <div className="bg-slate-50 p-4 rounded-full">
-                                    <ClipboardEdit size={48} className="text-slate-300" />
-                                  </div>
-                                  <div>
-                                    <p className="text-lg font-medium text-slate-500">该区域暂无填报数据</p>
-                                    <p className="text-sm mt-1">请点击对应区域的展开菜单进行数据录入</p>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="flex flex-col items-center gap-4 text-slate-400 animate-in fade-in slide-in-from-bottom-4">
-                                  <div className="bg-blue-50 p-4 rounded-full animate-bounce">
-                                    <LayoutDashboard size={48} className="text-blue-300" />
-                                  </div>
-                                  <div>
-                                    <p className="text-lg font-bold text-slate-600">请选择一个行政区</p>
-                                    <p className="text-sm mt-1">点击上方卡片开始管理与填报数据</p>
-                                  </div>
-                                </div>
-                              )}
-                            </td>
-                          </tr>
+                          <div className="flex flex-col items-center justify-center py-12 text-slate-400 space-y-4">
+                             {filterZoneId ? (
+                                <>
+                                    <div className="bg-white p-4 rounded-full shadow-sm"><ClipboardEdit size={32} className="text-slate-300" /></div>
+                                    <p className="text-sm">暂无数据，请点击上方添加</p>
+                                </>
+                             ) : (
+                                <>
+                                    <div className="bg-white p-4 rounded-full shadow-sm"><LayoutDashboard size={32} className="text-blue-300" /></div>
+                                    <p className="text-sm">请先选择一个区域</p>
+                                </>
+                             )}
+                          </div>
                         )}
-                      </tbody>
-                    </table>
+                    </div>
+
                   </div>
                 </section>
               </main>
 
-              {/* 填报对话框 (Modal) */}
+              {/* 填报对话框 (Modal) - 移动端适配版 */}
               {isModalOpen && selectedZone && selectedPoint && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-all animate-in fade-in duration-200">
-                  <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100 transform scale-100">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-all animate-in fade-in duration-200 overflow-y-auto">
+                  <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg border border-slate-100 transform scale-100 my-auto">
                     
-                    <div className="px-8 py-6 bg-gradient-to-r from-blue-600 to-blue-500 text-white flex justify-between items-center">
+                    <div className="px-6 py-5 bg-gradient-to-r from-blue-600 to-blue-500 text-white flex justify-between items-center rounded-t-3xl">
                       <div>
-                        <h3 className="font-bold text-xl flex items-center gap-2">
-                          <ClipboardEdit size={24} className="text-blue-200" /> 
-                          {editingRecordId ? '修改填报数据' : '新增填报数据'}
+                        <h3 className="font-bold text-lg md:text-xl flex items-center gap-2">
+                          <ClipboardEdit size={20} className="text-blue-200" /> 
+                          {editingRecordId ? '修改数据' : '新增填报'}
                         </h3>
-                        <div className="flex items-center gap-2 mt-2 text-xs text-blue-100/80">
+                        <div className="flex items-center gap-2 mt-1 text-xs text-blue-100/80 max-w-[200px] truncate">
                           <span className="bg-white/20 px-2 py-0.5 rounded">{selectedZone.name}</span>
                           <span>/</span>
-                          <span className="font-bold text-white">{selectedPoint.name}</span>
+                          <span className="font-bold text-white truncate">{selectedPoint.name}</span>
                         </div>
                       </div>
                       <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white/20 rounded-full transition-colors">
@@ -1037,9 +1142,10 @@
                       </button>
                     </div>
 
-                    <form onSubmit={handleSubmit} className="p-8 space-y-6 bg-slate-50/50">
+                    <form onSubmit={handleSubmit} className="p-5 md:p-8 space-y-5 md:space-y-6 bg-slate-50/50">
                       
-                      <div className="flex gap-6">
+                      {/* 响应式布局：手机端垂直排列，PC端水平排列 */}
+                      <div className="flex flex-col md:flex-row gap-4 md:gap-6">
                         <div className="space-y-2 flex-grow">
                           <label className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
                             灌水日期
@@ -1057,7 +1163,7 @@
                           </div>
                         </div>
                         
-                        <div className="space-y-2 w-1/3">
+                        <div className="space-y-2 w-full md:w-1/3">
                           <label className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
                             典型田块
                           </label>
@@ -1077,11 +1183,11 @@
                         </div>
                       </div>
 
-                      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+                      <div className="bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4 md:space-y-5">
                         <h4 className="text-xs font-bold text-blue-600 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 pb-2">
                           <Ruler size={14} /> 田面水层深度 (mm)
                         </h4>
-                        <div className="grid grid-cols-2 gap-6">
+                        <div className="grid grid-cols-2 gap-4 md:gap-6">
                           <div className="space-y-2">
                             <label className="text-sm font-medium text-slate-600">灌水前</label>
                             <input 
@@ -1114,7 +1220,7 @@
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                         <div className="space-y-2">
                           <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
                             灌前含水率 (%)
@@ -1165,29 +1271,20 @@
                         </div>
                       </div>
 
-                      <div className="bg-blue-600 rounded-2xl p-5 text-white shadow-lg shadow-blue-200 relative overflow-hidden group">
+                      <div className="bg-blue-600 rounded-2xl p-4 md:p-5 text-white shadow-lg shadow-blue-200 relative overflow-hidden group">
                         <div className="absolute right-0 top-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                            <Calculator size={80} />
                         </div>
                         <div className="relative z-10">
                           <div className="text-blue-100 text-xs font-bold uppercase tracking-wider mb-1">自动计算灌水量</div>
                           <div className="flex items-end gap-2">
-                            <span className="text-4xl font-bold tracking-tight">{calculatedVolume}</span>
+                            <span className="text-3xl md:text-4xl font-bold tracking-tight">{calculatedVolume}</span>
                             <span className="text-sm font-medium opacity-80 mb-1.5">方/亩</span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex gap-4 pt-2">
-                        {editingRecordId && (
-                          <button 
-                            type="button" 
-                            onClick={(e) => handleDeleteRecord(e, editingRecordId)}
-                            className="px-4 py-3 rounded-xl border border-red-200 text-red-500 hover:bg-red-50 font-bold transition-colors flex items-center gap-2"
-                          >
-                            <Trash2 size={20} />
-                          </button>
-                        )}
+                      <div className="flex flex-col-reverse md:flex-row gap-3 md:gap-4 pt-2">
                         <button 
                           type="button" 
                           onClick={() => setIsModalOpen(false)}
@@ -1195,12 +1292,24 @@
                         >
                           取消
                         </button>
-                        <button 
-                          type="submit"
-                          className="flex-[2] px-6 py-3 rounded-xl bg-blue-600 text-white hover:bg-blue-700 font-bold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex justify-center items-center gap-2"
-                        >
-                          <Save size={20} /> {editingRecordId ? '更新数据' : '确认保存'}
-                        </button>
+                        
+                        <div className="flex flex-1 gap-3">
+                            {editingRecordId && (
+                              <button 
+                                type="button" 
+                                onClick={(e) => handleDeleteRecord(e, editingRecordId)}
+                                className="px-4 py-3 rounded-xl border border-red-200 text-red-500 hover:bg-red-50 font-bold transition-colors flex items-center justify-center"
+                              >
+                                <Trash2 size={20} />
+                              </button>
+                            )}
+                            <button 
+                              type="submit"
+                              className="flex-1 px-6 py-3 rounded-xl bg-blue-600 text-white hover:bg-blue-700 font-bold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex justify-center items-center gap-2"
+                            >
+                              <Save size={20} /> {editingRecordId ? '更新' : '保存'}
+                            </button>
+                        </div>
                       </div>
                     </form>
                   </div>
