@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>农棚智脑 - 水肥协同决策平台</title>
+    
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 引入 Babel 独立版用于在浏览器编译 JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- 配置 Import Map，让浏览器能够识别和加载 React 以及第三方 NPM 包 (Lucide-react) -->
+    <script type="importmap">
+    {
+        "imports": {
+            "react": "https://esm.sh/react@18.2.0",
+            "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+            "lucide-react": "https://esm.sh/lucide-react@0.292.0"
+        }
+    }
+    </script>
+
+    <style>
+        /* 简单全局样式，隐藏滚动条以求美观 */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 antialiased overflow-hidden">
+    <!-- React 挂载点 -->
+    <div id="root"></div>
+
+    <!-- 核心业务逻辑 (设置 data-type="module" 让 Babel 配合原生 ES Module 运行) -->
+    <script type="text/babel" data-type="module">
+        import React, { useState } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { 
+            LayoutDashboard, Sprout, AlertTriangle, LineChart, FlaskConical, Droplet, 
+            Thermometer, Wind, Sun, Activity, CheckCircle, XCircle, ChevronRight, 
+            BellRing, Settings, CloudRain, Filter, Download, Sliders, User, Database, 
+            Save, Plus, BarChart3, PieChart, ChevronDown, X
+        } from 'lucide-react';
+
+        // --- 模拟数据 (Mock Data) ---
+        const mockUsers = [
+        { id: 1, name: '张秫瑄', role: '首席研究员 / 超级管理员', park: '江苏省设施农业创新示范基地', avatar: '张', phone: '17512573435' },
+        { id: 2, name: '李建国', role: '温室技术总监', park: '国家农业科技园区 (A区)', avatar: '李', phone: '139****1234' },
+        { id: 3, name: '王博', role: '巡检试验员', park: '南京高架草莓试验站', avatar: '王', phone: '150****5678' }
+        ];
+
+        const KpiData = {
+        totalGreenhouses: 12,
+        onlineDevices: 45,
+        activeAlerts: 3,
+        todayIrrigations: 8,
+        };
+
+        const mockAlerts = [
+        { id: 1, time: '10:23', type: '环境报警', level: '高', content: 'A区番茄棚夜间湿度超过85%，灰霉病风险极高', resolved: false },
+        { id: 2, time: '09:15', type: '水肥预警', level: '中', content: 'B区黄瓜棚基质水分低于阈值(25%)', resolved: false },
+        { id: 3, time: '08:00', type: '设备报警', level: '低', content: 'C区草莓棚2号土壤EC传感器离线', resolved: true },
+        ];
+
+        const extendedAlerts = [
+        ...mockAlerts,
+        { id: 4, time: '昨天 14:20', type: '环境报警', level: '中', content: 'B区黄瓜棚温度连续2小时高于32℃', resolved: true },
+        { id: 5, time: '昨天 09:00', type: '水肥预警', level: '低', content: 'C区草莓棚A液肥罐液位偏低', resolved: true },
+        { id: 6, time: '前天 18:30', type: '设备报警', level: '高', content: 'A区番茄棚主水泵电流异常', resolved: true },
+        ];
+
+        const mockDecisions = [
+        { 
+            id: 101, 
+            greenhouse: 'A区番茄棚', 
+            type: '灌溉建议', 
+            action: '开启滴灌 20 分钟', 
+            confidence: '95%',
+            reason: '基质含水率连续2小时低于25%，且当前光照辐射强，蒸散需求高。',
+            status: 'pending' 
+        },
+        { 
+            id: 102, 
+            greenhouse: 'B区黄瓜棚', 
+            type: '环境调控', 
+            action: '开启顶侧通风，降湿', 
+            confidence: '88%',
+            reason: '当前湿度88%，且外界温度适宜，通风可有效降低病害风险。',
+            status: 'approved' 
+        }
+        ];
+
+        const mockGreenhouses = [
+        { id: 1, name: 'A区番茄棚 (连栋)', crop: '番茄 (开花坐果期)', temp: 26.5, humidity: 75, soilMoisture: 24, ec: 2.1, status: 'warning' },
+        { id: 2, name: 'B区黄瓜棚 (日光)', crop: '黄瓜 (结瓜期)', temp: 28.0, humidity: 65, soilMoisture: 32, ec: 1.8, status: 'normal' },
+        { id: 3, name: 'C区草莓棚 (高架)', crop: '草莓 (膨大期)', temp: 22.5, humidity: 60, soilMoisture: 28, ec: 1.2, status: 'normal' },
+        ];
+
+        // --- 辅助小组件 ---
+        const KpiCard = ({ icon: Icon, label, value, color, bg }) => (
+        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center gap-4 hover:shadow-md transition-shadow">
+            <div className={`p-3 rounded-xl ${bg} ${color}`}>
+            <Icon size={24} />
+            </div>
+            <div>
+            <p className="text-sm text-slate-500 font-medium">{label}</p>
+            <p className="text-2xl font-bold text-slate-800">{value}</p>
+            </div>
+        </div>
+        );
+
+        const SensorMetric = ({ icon: Icon, label, value, isWarning }) => (
+        <div className="flex items-center gap-2">
+            <Icon size={16} className={isWarning ? 'text-rose-500' : 'text-slate-400'} />
+            <div>
+            <p className="text-[10px] text-slate-500 uppercase">{label}</p>
+            <p className={`text-sm font-semibold ${isWarning ? 'text-rose-600' : 'text-slate-700'}`}>{value}</p>
+            </div>
+        </div>
+        );
+
+        // --- 核心模块组件 ---
+
+        // 1. 侧边栏导航组件
+        const Sidebar = ({ currentView, setCurrentView }) => {
+        const navItems = [
+            { id: 'dashboard', icon: LayoutDashboard, label: '首页驾驶舱' },
+            { id: 'greenhouses', icon: Sprout, label: '棚室管理' },
+            { id: 'alerts', icon: AlertTriangle, label: '报警中心' },
+            { id: 'analysis', icon: LineChart, label: '数据分析' },
+            { id: 'research', icon: FlaskConical, label: '科研试验管理' },
+            { id: 'settings', icon: Settings, label: '系统设置' },
+        ];
+
+        return (
+            <div className="w-64 bg-slate-900 text-slate-300 flex flex-col h-full font-sans shadow-xl z-10">
+            <div className="p-6 flex items-center gap-3 border-b border-slate-800">
+                <div className="bg-emerald-500 p-2 rounded-lg text-white">
+                <Sprout size={24} />
+                </div>
+                <div>
+                <h1 className="text-white font-bold text-lg leading-tight">农棚智脑</h1>
+                <p className="text-xs text-slate-400">水肥协同决策平台</p>
+                </div>
+            </div>
+            <div className="flex-1 py-6 px-4 space-y-2 overflow-y-auto">
+                {navItems.map((item) => (
+                <button
+                    key={item.id}
+                    onClick={() => setCurrentView(item.id)}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
+                    currentView === item.id 
+                        ? 'bg-emerald-600/20 text-emerald-400 font-semibold' 
+                        : 'hover:bg-slate-800 hover:text-white'
+                    }`}
+                >
+                    <item.icon size={20} />
+                    <span>{item.label}</span>
+                </button>
+                ))}
+            </div>
+            </div>
+        );
+        };
+
+        // 2. 首页驾驶舱 (Dashboard)
+        const Dashboard = ({ setCurrentView, showMessage }) => {
+        const [decisions, setDecisions] = useState(mockDecisions);
+
+        const handleExecute = (id) => {
+            setDecisions(decisions.map(d => d.id === id ? { ...d, status: 'approved' } : d));
+            showMessage('✅ 指令已自动下发至执行设备');
+        };
+
+        const handleIgnore = (id) => {
+            setDecisions(decisions.filter(d => d.id !== id));
+            showMessage('已忽略该调控建议');
+        };
+
+        return (
+            <div className="space-y-6 animate-in fade-in duration-500">
+            {/* KPI 概览 */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <KpiCard icon={Sprout} label="管理棚室总数" value={KpiData.totalGreenhouses} color="text-emerald-600" bg="bg-emerald-100" />
+                <KpiCard icon={Activity} label="在线设备数" value={KpiData.onlineDevices} color="text-blue-600" bg="bg-blue-100" />
+                <KpiCard icon={BellRing} label="待处理预警" value={KpiData.activeAlerts} color="text-rose-600" bg="bg-rose-100" />
+                <KpiCard icon={Droplet} label="今日灌溉次数" value={KpiData.todayIrrigations} color="text-cyan-600" bg="bg-cyan-100" />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* 左侧：核心卖点 - 智能决策中心 */}
+                <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <CloudRain className="text-emerald-500" size={20}/>
+                    协同决策建议 (待确认)
+                    </h2>
+                    <span className="text-sm text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full font-medium">人机协同模式</span>
+                </div>
+                
+                <div className="space-y-4">
+                    {decisions.map((decision) => (
+                    <div key={decision.id} className="border border-slate-100 rounded-xl p-4 hover:shadow-md transition-shadow bg-slate-50">
+                        <div className="flex justify-between items-start mb-3">
+                        <div>
+                            <div className="flex items-center gap-2 mb-1">
+                            <span className="font-bold text-slate-800">{decision.greenhouse}</span>
+                            <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded border border-blue-200">
+                                {decision.type}
+                            </span>
+                            <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded border border-purple-200">
+                                置信度 {decision.confidence}
+                            </span>
+                            </div>
+                            <p className="text-lg font-semibold text-emerald-700">{decision.action}</p>
+                        </div>
+                        {decision.status === 'pending' ? (
+                            <div className="flex gap-2">
+                            <button onClick={() => handleExecute(decision.id)} className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                                <CheckCircle size={16} /> 执行
+                            </button>
+                            <button onClick={() => handleIgnore(decision.id)} className="flex items-center gap-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-600 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                                <XCircle size={16} /> 忽略
+                            </button>
+                            </div>
+                        ) : (
+                            <span className="flex items-center gap-1 text-slate-400 text-sm">
+                            <CheckCircle size={16} /> 已执行
+                            </span>
+                        )}
+                        </div>
+                        <div className="bg-white p-3 rounded-lg border border-slate-100 text-sm text-slate-600 flex items-start gap-2">
+                        <Activity size={16} className="text-slate-400 mt-0.5 shrink-0" />
+                        <p><strong>决策依据：</strong>{decision.reason}</p>
+                        </div>
+                    </div>
+                    ))}
+                    {decisions.length === 0 && (
+                        <div className="text-center py-6 text-slate-500">当前暂无待处理的决策建议</div>
+                    )}
+                </div>
+                </div>
+
+                {/* 右侧：实时预警 */}
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <AlertTriangle className="text-rose-500" size={20}/>
+                    实时风险预警
+                    </h2>
+                    <button onClick={() => setCurrentView('alerts')} className="text-sm text-slate-500 hover:text-emerald-600 flex items-center">
+                    全部 <ChevronRight size={16} />
+                    </button>
+                </div>
+                
+                <div className="space-y-3">
+                    {mockAlerts.map(alert => (
+                    <div key={alert.id} className={`p-3 rounded-xl border-l-4 ${alert.resolved ? 'border-slate-300 bg-slate-50 opacity-60' : alert.level === '高' ? 'border-rose-500 bg-rose-50' : 'border-amber-400 bg-amber-50'}`}>
+                        <div className="flex justify-between items-start mb-1">
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded ${alert.resolved ? 'bg-slate-200 text-slate-600' : alert.level === '高' ? 'bg-rose-200 text-rose-700' : 'bg-amber-200 text-amber-800'}`}>
+                            {alert.type}
+                        </span>
+                        <span className="text-xs text-slate-500">{alert.time}</span>
+                        </div>
+                        <p className={`text-sm mt-2 ${alert.resolved ? 'text-slate-500 line-through' : 'text-slate-700'}`}>
+                        {alert.content}
+                        </p>
+                    </div>
+                    ))}
+                </div>
+                </div>
+            </div>
+            
+            {/* 底部：棚室状态总览快照 */}
+            <div>
+                <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-bold text-slate-800">棚室实时监测快照</h2>
+                <button onClick={() => setCurrentView('greenhouses')} className="text-sm text-slate-500 hover:text-emerald-600 flex items-center">
+                    进入详细管理 <ChevronRight size={16} />
+                </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {mockGreenhouses.map(gh => (
+                    <div key={gh.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col cursor-pointer hover:shadow-md transition-all" onClick={() => setCurrentView('greenhouses')}>
+                    <div className="flex justify-between items-center border-b border-slate-100 pb-3 mb-3">
+                        <div>
+                        <h3 className="font-bold text-slate-800">{gh.name}</h3>
+                        <p className="text-xs text-slate-500">{gh.crop}</p>
+                        </div>
+                        <div className={`w-3 h-3 rounded-full ${gh.status === 'normal' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-rose-500 animate-pulse shadow-[0_0_8px_rgba(244,63,94,0.5)]'}`}></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-y-3 gap-x-2">
+                        <SensorMetric icon={Thermometer} label="气温" value={`${gh.temp}°C`} />
+                        <SensorMetric icon={Wind} label="空气湿度" value={`${gh.humidity}%`} />
+                        <SensorMetric icon={Droplet} label="基质水分" value={`${gh.soilMoisture}%`} isWarning={gh.soilMoisture < 25} />
+                        <SensorMetric icon={Activity} label="土壤EC" value={`${gh.ec} mS/cm`} />
+                    </div>
+                    </div>
+                ))}
+                </div>
+            </div>
+            </div>
+        );
+        };
+
+        // 3. 棚室管理页 (Greenhouses View)
+        const GreenhousesView = ({ showMessage }) => {
+        return (
+            <div className="space-y-6 animate-in fade-in duration-500">
+            <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                <div className="flex gap-4">
+                <button onClick={() => showMessage('筛选面板已打开')} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+                    <Filter size={16} /> 筛选状态
+                </button>
+                </div>
+                <button onClick={() => showMessage('正在进入新增棚室流程...')} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+                <Plus size={16} /> 新增棚室
+                </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                {mockGreenhouses.map(gh => (
+                <div key={gh.id} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex flex-col hover:shadow-md transition-shadow">
+                    <div className="flex justify-between items-start mb-4">
+                    <div>
+                        <h3 className="text-xl font-bold text-slate-800">{gh.name}</h3>
+                        <p className="text-sm text-emerald-600 font-medium mt-1">{gh.crop}</p>
+                    </div>
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${gh.status === 'normal' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700 animate-pulse'}`}>
+                        {gh.status === 'normal' ? '运行正常' : '存在异常'}
+                    </span>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4 mb-6 flex-1">
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <SensorMetric icon={Thermometer} label="空气温度" value={`${gh.temp}°C`} />
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <SensorMetric icon={Wind} label="空气湿度" value={`${gh.humidity}%`} />
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <SensorMetric icon={Droplet} label="基质水分" value={`${gh.soilMoisture}%`} isWarning={gh.soilMoisture < 25} />
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <SensorMetric icon={Activity} label="土壤EC" value={`${gh.ec} mS/cm`} />
+                    </div>
+                    </div>
+
+                    <div className="flex gap-2 pt-4 border-t border-slate-100">
+                    <button onClick={() => showMessage(`正在加载 ${gh.name} 的详细数据...`)} className="flex-1 bg-slate-900 hover:bg-slate-800 text-white py-2 rounded-lg text-sm font-medium transition-colors">
+                        详细数据
+                    </button>
+                    <button onClick={() => showMessage(`正在打开 ${gh.name} 的设备控制台...`)} className="flex-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 py-2 rounded-lg text-sm font-medium transition-colors">
+                        设备控制
+                    </button>
+                    </div>
+                </div>
+                ))}
+            </div>
+            </div>
+        );
+        };
+
+        // 4. 报警中心页 (Alerts View)
+        const AlertsView = ({ showMessage }) => {
+        const [filter, setFilter] = useState('全部');
+        const [alertsList, setAlertsList] = useState(extendedAlerts);
+        const tabs = ['全部', '环境报警', '水肥预警', '设备报警'];
+
+        const filteredAlerts = alertsList.filter(a => filter === '全部' || a.type === filter);
+
+        const handleMarkAll = () => {
+            setAlertsList(alertsList.map(a => ({ ...a, resolved: true })));
+            showMessage('✅ 已全部标记为已处理');
+        };
+
+        const handleResolve = (id) => {
+            setAlertsList(alertsList.map(a => a.id === id ? { ...a, resolved: true } : a));
+            showMessage('✅ 报警状态已更新');
+        };
+
+        return (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 animate-in fade-in duration-500 min-h-[70vh]">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                <div className="flex gap-2 bg-slate-100 p-1 rounded-lg">
+                {tabs.map(tab => (
+                    <button
+                    key={tab}
+                    onClick={() => setFilter(tab)}
+                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${filter === tab ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                    {tab}
+                    </button>
+                ))}
+                </div>
+                <div className="flex gap-2">
+                <button onClick={() => showMessage('✅ 报警记录报表已导出')} className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+                    <Download size={16} /> 导出记录
+                </button>
+                <button onClick={handleMarkAll} className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                    全部标记已处理
+                </button>
+                </div>
+            </div>
+
+            <div className="space-y-3">
+                {filteredAlerts.length > 0 ? filteredAlerts.map(alert => (
+                <div key={alert.id} className={`flex items-center justify-between p-4 rounded-xl border ${alert.resolved ? 'border-slate-200 bg-slate-50' : alert.level === '高' ? 'border-rose-200 bg-rose-50' : 'border-amber-200 bg-amber-50'} transition-all hover:shadow-sm`}>
+                    <div className="flex items-center gap-4">
+                    <div className={`p-2 rounded-full ${alert.resolved ? 'bg-slate-200 text-slate-500' : alert.level === '高' ? 'bg-rose-200 text-rose-600' : 'bg-amber-200 text-amber-600'}`}>
+                        <AlertTriangle size={20} />
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2 mb-1">
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded ${alert.resolved ? 'bg-slate-200 text-slate-600' : alert.level === '高' ? 'bg-rose-500 text-white' : 'bg-amber-500 text-white'}`}>
+                            {alert.type}
+                        </span>
+                        <span className="text-sm font-bold text-slate-700">{alert.level}风险</span>
+                        <span className="text-xs text-slate-500 ml-2">{alert.time}</span>
+                        </div>
+                        <p className={`text-sm ${alert.resolved ? 'text-slate-500' : 'text-slate-800 font-medium'}`}>{alert.content}</p>
+                    </div>
+                    </div>
+                    <div>
+                    {!alert.resolved ? (
+                        <button onClick={() => handleResolve(alert.id)} className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors">
+                        去处理
+                        </button>
+                    ) : (
+                        <span className="text-sm text-slate-400 flex items-center gap-1"><CheckCircle size={16}/> 已解决</span>
+                    )}
+                    </div>
+                </div>
+                )) : (
+                <div className="text-center py-12 text-slate-500">该分类下暂无报警记录</div>
+                )}
+            </div>
+            </div>
+        );
+        };
+
+        // 5. 数据分析页 (Analysis View)
+        const AnalysisView = ({ showMessage }) => {
+        // 模拟图表数据
+        const weekData = [
+            { date: '03-28', value: 45.2 },
+            { date: '03-29', value: 52.8 },
+            { date: '03-30', value: 38.5 },
+            { date: '03-31', value: 65.1 },
+            { date: '04-01', value: 48.0 },
+            { date: '04-02', value: 55.4 },
+            { date: '04-03', value: 42.6 }
+        ];
+        const maxVal = Math.max(...weekData.map(d => d.value)) * 1.15; // 预留15%顶部空间
+
+        return (
+            <div className="space-y-6 animate-in fade-in duration-500">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* 模拟图表 1: 耗水量趋势 */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="font-bold text-slate-800 flex items-center gap-2"><BarChart3 size={20} className="text-blue-500"/> 近7日灌溉耗水量 (m³)</h3>
+                    <select onChange={(e) => showMessage(`已切换数据源至：${e.target.value}`)} className="bg-slate-50 border border-slate-200 text-sm rounded-lg px-2 py-1 outline-none text-slate-600">
+                    <option>全园区</option>
+                    <option>A区番茄棚</option>
+                    </select>
+                </div>
+                <div className="flex items-end gap-3 h-52 mt-4 pt-6 border-b border-slate-100 pb-2">
+                    {weekData.map((item, idx) => (
+                    <div key={idx} className="flex-1 flex flex-col justify-end items-center gap-2 h-full">
+                        <div className="w-full h-full flex items-end relative group bg-slate-50 hover:bg-slate-100 rounded-t-md transition-colors">
+                        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10 shadow-lg">
+                            {item.value} m³
+                        </div>
+                        <div className="w-full bg-blue-500 group-hover:bg-blue-400 rounded-t-md transition-all duration-700 shadow-sm" style={{ height: `${(item.value / maxVal) * 100}%` }}></div>
+                        </div>
+                        <span className="text-xs text-slate-500 font-medium">{item.date}</span>
+                    </div>
+                    ))}
+                </div>
+                </div>
+
+                {/* 模拟图表 2: 综合效能评估 */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="font-bold text-slate-800 flex items-center gap-2"><PieChart size={20} className="text-emerald-500"/> 本月资源利用效率评估</h3>
+                </div>
+                <div className="space-y-6 mt-4">
+                    <div>
+                    <div className="flex justify-between text-sm mb-1"><span className="text-slate-600">水分利用率 (WUE)</span><span className="font-bold text-emerald-600">优秀</span></div>
+                    <div className="w-full bg-slate-100 rounded-full h-2"><div className="bg-emerald-500 h-2 rounded-full" style={{width: '85%'}}></div></div>
+                    </div>
+                    <div>
+                    <div className="flex justify-between text-sm mb-1"><span className="text-slate-600">肥料偏生产力 (PFP)</span><span className="font-bold text-blue-600">良好</span></div>
+                    <div className="w-full bg-slate-100 rounded-full h-2"><div className="bg-blue-500 h-2 rounded-full" style={{width: '72%'}}></div></div>
+                    </div>
+                    <div>
+                    <div className="flex justify-between text-sm mb-1"><span className="text-slate-600">环境达标率 (温度/湿度)</span><span className="font-bold text-amber-500">需改善</span></div>
+                    <div className="w-full bg-slate-100 rounded-full h-2"><div className="bg-amber-400 h-2 rounded-full" style={{width: '58%'}}></div></div>
+                    </div>
+                </div>
+                <div className="mt-8 bg-emerald-50 p-4 rounded-xl border border-emerald-100">
+                    <p className="text-sm text-emerald-800 font-medium">💡 洞察建议：本月A区番茄夜温控制略有偏差，导致环境达标率下降，建议调整夜间通风策略。</p>
+                </div>
+                </div>
+            </div>
+            </div>
+        );
+        };
+
+        // 6. 科研试验管理页 (Research Mode)
+        const ResearchMode = ({ showMessage }) => {
+        const [experiments, setExperiments] = useState([
+            { id: 1, name: '不同灌溉下限对番茄产量及WUE的影响', crop: '番茄', treatments: 4, replicates: 3, status: '进行中', date: '2026-03-01', aiEnabled: false },
+            { id: 2, name: '高架草莓夜间温光耦合调控试验', crop: '草莓', treatments: 3, replicates: 4, status: '已归档', date: '2025-11-15', aiEnabled: false },
+        ]);
+        const [showModal, setShowModal] = useState(false);
+
+        // 提交新建试验表单
+        const handleAddExp = (e) => {
+            e.preventDefault();
+            const newExp = {
+            id: Date.now(),
+            name: e.target.expName.value,
+            crop: e.target.crop.value || '未知',
+            treatments: parseInt(e.target.treatments.value) || 0,
+            replicates: parseInt(e.target.replicates.value) || 0,
+            status: '进行中',
+            date: new Date().toISOString().split('T')[0], // 默认今天
+            aiEnabled: false
+            };
+            setExperiments([newExp, ...experiments]);
+            setShowModal(false);
+            showMessage('✅ 试验项目创建成功！');
+        };
+
+        const toggleAi = (id) => {
+            setExperiments(experiments.map(exp => 
+            exp.id === id ? { ...exp, aiEnabled: !exp.aiEnabled } : exp
+            ));
+            const target = experiments.find(e => e.id === id);
+            if(target && !target.aiEnabled) {
+            showMessage(`✅ 已开启 [${target.name}] 的AI智慧管控`);
+            } else {
+            showMessage(`已关闭智慧管控`);
+            }
+        };
+
+        return (
+            <div className="space-y-6 animate-in fade-in duration-500 relative">
+            
+            <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                <div>
+                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <FlaskConical className="text-indigo-500" size={20}/>
+                    科研试验与数据追溯
+                </h2>
+                <p className="text-sm text-slate-500 mt-1">管理试验设计（处理、重复、区组），自动绑定时空环境数据</p>
+                </div>
+                <div className="flex gap-2">
+                <button 
+                    onClick={() => showMessage('💡 请先配置本地数据读取权限，模块对接中...')}
+                    className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                >
+                    导入表型数据
+                </button>
+                <button 
+                    onClick={() => setShowModal(true)}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm"
+                >
+                    <Plus size={16} /> 新建试验项目
+                </button>
+                </div>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                <table className="w-full text-left border-collapse">
+                <thead>
+                    <tr className="bg-slate-50 border-b border-slate-100 text-sm text-slate-600">
+                    <th className="py-4 px-6 font-medium">试验项目名称</th>
+                    <th className="py-4 px-6 font-medium whitespace-nowrap">研究作物</th>
+                    <th className="py-4 px-6 font-medium whitespace-nowrap">处理数</th>
+                    <th className="py-4 px-6 font-medium whitespace-nowrap">重复数</th>
+                    <th className="py-4 px-6 font-medium whitespace-nowrap">状态</th>
+                    <th className="py-4 px-6 font-medium whitespace-nowrap">智慧管控</th>
+                    <th className="py-4 px-6 font-medium whitespace-nowrap">立项时间</th>
+                    <th className="py-4 px-6 font-medium text-right whitespace-nowrap">操作</th>
+                    </tr>
+                </thead>
+                <tbody className="text-sm text-slate-700">
+                    {experiments.map(exp => (
+                    <tr key={exp.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                        <td className="py-4 px-6 font-bold text-slate-800">{exp.name}</td>
+                        <td className="py-4 px-6 whitespace-nowrap">{exp.crop}</td>
+                        <td className="py-4 px-6 whitespace-nowrap">{exp.treatments}</td>
+                        <td className="py-4 px-6 whitespace-nowrap">{exp.replicates}</td>
+                        <td className="py-4 px-6 whitespace-nowrap">
+                        <span className={`px-2 py-1 rounded text-xs font-bold whitespace-nowrap ${exp.status === '进行中' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                            {exp.status}
+                        </span>
+                        </td>
+                        <td className="py-4 px-6 whitespace-nowrap">
+                        <div className="flex items-center">
+                            <button 
+                            onClick={() => exp.status === '进行中' && toggleAi(exp.id)}
+                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${exp.status !== '进行中' ? 'cursor-not-allowed opacity-50 bg-slate-200' : exp.aiEnabled ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                            title={exp.status === '进行中' ? '开启/关闭 AI 自主管控' : '已归档试验无法操作'}
+                            >
+                            <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${exp.aiEnabled ? 'translate-x-5' : 'translate-x-1'}`} />
+                            </button>
+                            {exp.aiEnabled && exp.status === '进行中' && (
+                            <span className="ml-2 text-[10px] bg-emerald-50 text-emerald-600 border border-emerald-200 px-1.5 py-0.5 rounded font-bold animate-pulse">
+                                AI托管中
+                            </span>
+                            )}
+                        </div>
+                        </td>
+                        <td className="py-4 px-6 whitespace-nowrap">{exp.date}</td>
+                        <td className="py-4 px-6 text-right">
+                        <div className="flex justify-end gap-4">
+                            <button onClick={() => showMessage('可视化矩阵排布功能开发中...')} className="text-indigo-600 hover:text-indigo-800 font-medium whitespace-nowrap">设计矩阵</button>
+                            <button onClick={() => showMessage('数据正在打包，准备导出...')} className="text-emerald-600 hover:text-emerald-800 font-medium whitespace-nowrap">导出数据</button>
+                        </div>
+                        </td>
+                    </tr>
+                    ))}
+                </tbody>
+                </table>
+            </div>
+
+            {/* 新建项目 弹窗 (Modal) */}
+            {showModal && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
+                <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+                    <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-lg font-bold text-slate-800">新建科研试验项目</h3>
+                    <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                        <X size={20}/>
+                    </button>
+                    </div>
+                    <form onSubmit={handleAddExp} className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">试验项目名称 <span className="text-rose-500">*</span></label>
+                        <input name="expName" required type="text" placeholder="如：不同光周期对草莓糖度影响" className="w-full border border-slate-300 rounded-lg px-4 py-2 text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500" />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">研究作物 <span className="text-rose-500">*</span></label>
+                        <input name="crop" required type="text" placeholder="如：草莓" className="w-full border border-slate-300 rounded-lg px-4 py-2 text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">设置处理数</label>
+                        <input name="treatments" required type="number" min="1" defaultValue="1" className="w-full border border-slate-300 rounded-lg px-4 py-2 text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500" />
+                        </div>
+                        <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">设置重复数</label>
+                        <input name="replicates" required type="number" min="1" defaultValue="3" className="w-full border border-slate-300 rounded-lg px-4 py-2 text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500" />
+                        </div>
+                    </div>
+                    <div className="pt-4 border-t border-slate-100 flex justify-end gap-3 mt-6">
+                        <button type="button" onClick={() => setShowModal(false)} className="px-6 py-2 rounded-lg font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors">
+                        取消
+                        </button>
+                        <button type="submit" className="px-6 py-2 rounded-lg font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-colors">
+                        确认创建
+                        </button>
+                    </div>
+                    </form>
+                </div>
+                </div>
+            )}
+            </div>
+        );
+        };
+
+        // 7. 系统设置页 (Settings View)
+        const SettingsView = ({ currentUser, showMessage }) => {
+        const [activeTab, setActiveTab] = useState('rules');
+        const [weatherApiEnabled, setWeatherApiEnabled] = useState(false);
+
+        return (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 animate-in fade-in duration-500 flex flex-col md:flex-row min-h-[70vh] overflow-hidden">
+            {/* 左侧设置菜单 */}
+            <div className="w-full md:w-64 bg-slate-50 border-r border-slate-100 p-6 flex flex-col gap-2">
+                <button onClick={() => setActiveTab('basic')} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-colors font-medium text-sm ${activeTab === 'basic' ? 'bg-white shadow-sm text-emerald-600 border border-slate-200' : 'text-slate-600 hover:bg-slate-200/50'}`}>
+                <User size={18} /> 基本信息
+                </button>
+                <button onClick={() => setActiveTab('rules')} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-colors font-medium text-sm ${activeTab === 'rules' ? 'bg-white shadow-sm text-emerald-600 border border-slate-200' : 'text-slate-600 hover:bg-slate-200/50'}`}>
+                <Sliders size={18} /> 报警规则设置
+                </button>
+                <button onClick={() => setActiveTab('integration')} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-colors font-medium text-sm ${activeTab === 'integration' ? 'bg-white shadow-sm text-emerald-600 border border-slate-200' : 'text-slate-600 hover:bg-slate-200/50'}`}>
+                <Database size={18} /> 外部设备集成
+                </button>
+            </div>
+            
+            {/* 右侧设置内容 */}
+            <div className="flex-1 p-8">
+                {activeTab === 'basic' && (
+                <div className="max-w-2xl animate-in fade-in" key={currentUser.id}>
+                    <h3 className="text-lg font-bold text-slate-800 mb-6 border-b border-slate-100 pb-4">基本信息配置</h3>
+                    <div className="space-y-6">
+                    <div className="flex items-center gap-6 mb-8">
+                        <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 text-2xl font-bold shadow-sm">
+                        {currentUser.avatar}
+                        </div>
+                        <div>
+                        <button onClick={() => showMessage('头像更换功能开发中...')} className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                            更换头像
+                        </button>
+                        </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-6">
+                        <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">用户姓名</label>
+                        <input type="text" defaultValue={currentUser.name} className="w-full border border-slate-300 rounded-lg px-4 py-2 text-slate-700 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" />
+                        </div>
+                        <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">联系电话</label>
+                        <input type="text" defaultValue={currentUser.phone} className="w-full border border-slate-300 rounded-lg px-4 py-2 text-slate-700 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" />
+                        </div>
+                        <div className="col-span-2">
+                        <label className="block text-sm font-medium text-slate-700 mb-1">所属园区/机构</label>
+                        <input type="text" defaultValue={currentUser.park} className="w-full border border-slate-300 rounded-lg px-4 py-2 text-slate-700 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" />
+                        </div>
+                        <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">系统角色</label>
+                        <input type="text" defaultValue={currentUser.role} disabled className="w-full border border-slate-200 bg-slate-50 rounded-lg px-4 py-2 text-slate-500 outline-none cursor-not-allowed" />
+                        </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-100 flex justify-end">
+                        <button onClick={() => showMessage('✅ 已保存基本信息更改')} className="px-6 py-2 rounded-lg font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition-colors flex items-center gap-2">
+                        <Save size={18} /> 保存更改
+                        </button>
+                    </div>
+                    </div>
+                </div>
+                )}
+
+                {activeTab === 'rules' && (
+                <div className="max-w-2xl animate-in fade-in">
+                    <h3 className="text-lg font-bold text-slate-800 mb-6 border-b border-slate-100 pb-4">全局报警阈值与决策规则配置</h3>
+                    
+                    <div className="space-y-8">
+                    {/* 分组1 */}
+                    <section>
+                        <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">环境监测阈值</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">高温报警阈值 (°C)</label>
+                            <input type="number" defaultValue={35} className="w-full border border-slate-300 rounded-lg px-4 py-2 text-slate-700 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">高湿报警阈值 (%)</label>
+                            <input type="number" defaultValue={85} className="w-full border border-slate-300 rounded-lg px-4 py-2 text-slate-700 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" />
+                        </div>
+                        </div>
+                    </section>
+                    
+                    {/* 分组2 */}
+                    <section>
+                        <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">水肥决策控制规则</h4>
+                        <div className="space-y-4">
+                        <div className="flex items-center justify-between p-4 border border-slate-200 rounded-xl bg-slate-50">
+                            <div>
+                            <p className="font-bold text-slate-800">基质含水率过低自动生成决策</p>
+                            <p className="text-sm text-slate-500 mt-1">当连续2小时低于设定阈值时，自动向决策中心推送灌溉建议。</p>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" defaultChecked className="sr-only peer" />
+                            <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                            </label>
+                        </div>
+                        
+                        <div className="flex items-center justify-between p-4 border border-slate-200 rounded-xl bg-slate-50">
+                            <div>
+                            <p className="font-bold text-slate-800">全自动无人值守模式 (高风险)</p>
+                            <p className="text-sm text-slate-500 mt-1">系统生成决策后将直接联动电磁阀执行，跳过人工确认环节。</p>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" className="sr-only peer" />
+                            <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-500"></div>
+                            </label>
+                        </div>
+                        </div>
+                    </section>
+                    
+                    <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">
+                        <button onClick={() => showMessage('已取消更改')} className="px-6 py-2 rounded-lg font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors">取消</button>
+                        <button onClick={() => showMessage('✅ 已保存全局报警与决策规则')} className="px-6 py-2 rounded-lg font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition-colors flex items-center gap-2">
+                        <Save size={18} /> 保存配置
+                        </button>
+                    </div>
+                    </div>
+                </div>
+                )}
+
+                {activeTab === 'integration' && (
+                <div className="max-w-3xl animate-in fade-in">
+                    <h3 className="text-lg font-bold text-slate-800 mb-6 border-b border-slate-100 pb-4">外部设备与系统集成</h3>
+                    <div className="space-y-6">
+                    
+                    {/* MQTT Broker 配置 */}
+                    <div className="p-5 border border-slate-200 rounded-xl bg-slate-50 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-2 h-full bg-emerald-400"></div>
+                        <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <h4 className="font-bold text-slate-800 flex items-center gap-2"><Database size={18} className="text-emerald-600"/> 物联网 MQTT 网关</h4>
+                            <p className="text-sm text-slate-500 mt-1">连接大棚内的环境传感器、阀门与水肥一体机</p>
+                        </div>
+                        <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded">已连接</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <span className="text-slate-500">服务器地址：</span>
+                            <span className="font-medium text-slate-700">mqtt.agri-cloud.net:1883</span>
+                        </div>
+                        <div>
+                            <span className="text-slate-500">连接状态：</span>
+                            <span className="font-medium text-emerald-600">正常心跳 (9ms)</span>
+                        </div>
+                        </div>
+                        <div className="mt-4 pt-4 border-t border-slate-200 flex gap-2">
+                        <button onClick={() => showMessage('网关密钥配置面板...')} className="text-sm text-slate-600 bg-white border border-slate-300 px-3 py-1.5 rounded hover:bg-slate-50 transition-colors">配置密钥</button>
+                        <button onClick={() => showMessage('正在拉取设备日志...')} className="text-sm text-slate-600 bg-white border border-slate-300 px-3 py-1.5 rounded hover:bg-slate-50 transition-colors">查看日志</button>
+                        </div>
+                    </div>
+
+                    {/* 气象站 API */}
+                    <div className="p-5 border border-slate-200 rounded-xl bg-slate-50 relative overflow-hidden">
+                        <div className={`absolute top-0 right-0 w-2 h-full ${weatherApiEnabled ? 'bg-emerald-400' : 'bg-slate-300'}`}></div>
+                        <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <h4 className="font-bold text-slate-800 flex items-center gap-2"><CloudRain size={18} className="text-blue-500"/> 气象局数据接口 (API)</h4>
+                            <p className="text-sm text-slate-500 mt-1">获取未来7天天气预报以计算蒸散量(ET0)</p>
+                        </div>
+                        <span className={`px-2 py-1 text-xs font-bold rounded ${weatherApiEnabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
+                            {weatherApiEnabled ? '运行中' : '未启用'}
+                        </span>
+                        </div>
+                        <div className="flex gap-2">
+                        {!weatherApiEnabled ? (
+                            <button onClick={() => { setWeatherApiEnabled(true); showMessage('✅ 已启动气象局数据接口'); }} className="text-sm text-white bg-emerald-600 px-4 py-1.5 rounded hover:bg-emerald-700 transition-colors">启用服务</button>
+                        ) : (
+                            <button onClick={() => { setWeatherApiEnabled(false); showMessage('已关闭气象局数据接口'); }} className="text-sm text-slate-600 bg-white border border-slate-300 px-4 py-1.5 rounded hover:bg-slate-50 transition-colors">停止服务</button>
+                        )}
+                        </div>
+                    </div>
+
+                    </div>
+                </div>
+                )}
+            </div>
+            </div>
+        );
+        };
+
+        // --- 主应用入口 ---
+        function App() {
+        const [currentView, setCurrentView] = useState('dashboard');
+        const [currentUser, setCurrentUser] = useState(mockUsers[0]);
+        const [showUserMenu, setShowUserMenu] = useState(false);
+        const [toastMessage, setToastMessage] = useState('');
+
+        // 提取到全局的提示条控制方法
+        const showMessage = (msg) => {
+            setToastMessage(msg);
+            setTimeout(() => setToastMessage(''), 3000);
+        };
+
+        return (
+            <div className="flex h-screen bg-slate-50 overflow-hidden font-sans relative">
+            {/* 全局消息提示 (Toast) */}
+            {toastMessage && (
+                <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-slate-800/90 backdrop-blur text-white px-6 py-3 rounded-full shadow-lg font-medium animate-in slide-in-from-top-4 fade-in duration-300">
+                {toastMessage}
+                </div>
+            )}
+
+            <Sidebar currentView={currentView} setCurrentView={setCurrentView} />
+            
+            <main className="flex-1 flex flex-col h-screen overflow-y-auto" onClick={() => showUserMenu && setShowUserMenu(false)}>
+                {/* 顶部通栏 */}
+                <header className="bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center sticky top-0 z-10 shadow-sm" onClick={(e) => e.stopPropagation()}>
+                <h1 className="text-xl font-bold text-slate-800">
+                    {currentView === 'dashboard' && '概览与决策中心'}
+                    {currentView === 'greenhouses' && '棚室与设备管理'}
+                    {currentView === 'alerts' && '全局报警中心'}
+                    {currentView === 'analysis' && '多维数据分析'}
+                    {currentView === 'research' && '科研试验协同'}
+                    {currentView === 'settings' && '系统设置'}
+                </h1>
+                <div className="flex items-center gap-4 text-sm">
+                    <span className="text-slate-500">当前园区: </span>
+                    <span className="font-semibold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">
+                    {currentUser.park}
+                    </span>
+                    
+                    <div className="relative ml-4">
+                    <button 
+                        onClick={() => setShowUserMenu(!showUserMenu)}
+                        className="flex items-center gap-2 hover:bg-slate-50 p-1.5 rounded-xl transition-colors cursor-pointer"
+                    >
+                        <div className="w-8 h-8 bg-emerald-100 rounded-full border-2 border-white shadow-sm flex items-center justify-center text-emerald-700 font-bold">
+                        {currentUser.avatar}
+                        </div>
+                        <div className="text-left hidden sm:block">
+                        <span className="font-medium text-slate-700 block text-sm leading-tight">{currentUser.name}</span>
+                        <span className="text-[10px] text-slate-500 block">{currentUser.role.split('/')[0].trim()}</span>
+                        </div>
+                        <ChevronDown size={14} className="text-slate-400 ml-1" />
+                    </button>
+
+                    {/* 用户下拉菜单 */}
+                    {showUserMenu && (
+                        <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="px-4 py-2 border-b border-slate-50 mb-2">
+                            <p className="text-xs text-slate-400 font-bold tracking-wider">切换账号</p>
+                        </div>
+                        {mockUsers.map(user => (
+                            <button
+                            key={user.id}
+                            onClick={() => {
+                                setCurrentUser(user);
+                                setShowUserMenu(false);
+                            }}
+                            className={`w-full text-left px-4 py-2 flex items-center gap-3 hover:bg-slate-50 transition-colors ${currentUser.id === user.id ? 'bg-emerald-50/50' : ''}`}
+                            >
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${currentUser.id === user.id ? 'bg-emerald-500 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
+                                {user.avatar}
+                            </div>
+                            <div>
+                                <p className={`text-sm font-bold ${currentUser.id === user.id ? 'text-emerald-700' : 'text-slate-700'}`}>{user.name}</p>
+                                <p className="text-xs text-slate-500">{user.role.split('/')[0].trim()}</p>
+                            </div>
+                            </button>
+                        ))}
+                        </div>
+                    )}
+                    </div>
+                </div>
+                </header>
+
+                {/* 内容区 */}
+                <div className="p-8">
+                {currentView === 'dashboard' && <Dashboard setCurrentView={setCurrentView} showMessage={showMessage} />}
+                {currentView === 'research' && <ResearchMode showMessage={showMessage} />}
+                {currentView === 'greenhouses' && <GreenhousesView showMessage={showMessage} />}
+                {currentView === 'alerts' && <AlertsView showMessage={showMessage} />}
+                {currentView === 'analysis' && <AnalysisView showMessage={showMessage} />}
+                {currentView === 'settings' && <SettingsView currentUser={currentUser} showMessage={showMessage} />}
+                </div>
+            </main>
+            </div>
+        );
+        }
+
+        // 将 App 渲染到 DOM 中
+        const rootElement = document.getElementById('root');
+        const root = createRoot(rootElement);
+        root.render(<App />);
+    </script>
+</body>
+</html>
